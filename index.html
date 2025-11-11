@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>浇个盆友——书香伴绿意，阅读共成长</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         :root {
             --primary-green: #4CAF50;
@@ -343,36 +344,6 @@
             font-size: 16px;
         }
         
-        .step-indicator {
-            display: flex;
-            justify-content: center;
-            margin-bottom: 30px;
-        }
-        
-        .step {
-            width: 30px;
-            height: 30px;
-            border-radius: 50%;
-            background-color: var(--border-gray);
-            color: white;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0 10px;
-        }
-        
-        .step.active {
-            background-color: var(--primary-green);
-        }
-        
-        .step-content {
-            display: none;
-        }
-        
-        .step-content.active {
-            display: block;
-        }
-        
         .btn-group {
             display: flex;
             justify-content: space-between;
@@ -400,30 +371,6 @@
         .btn-warning {
             background-color: var(--warning-red);
             color: white;
-        }
-        
-        .camera-preview {
-            width: 100%;
-            height: 300px;
-            background-color: #f0f0f0;
-            border-radius: 5px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-bottom: 20px;
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .camera-preview img {
-            max-width: 100%;
-            max-height: 100%;
-        }
-        
-        .camera-controls {
-            display: flex;
-            justify-content: center;
-            gap: 10px;
         }
         
         .success-message {
@@ -563,9 +510,97 @@
             color: var(--light-gray);
             padding: 20px;
         }
+        
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: var(--light-gray);
+        }
+        
+        .error-message {
+            background-color: #ffebee;
+            color: var(--warning-red);
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+        
+        .status-indicator {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 12px;
+            z-index: 1001;
+        }
+        
+        .status-connected {
+            background-color: #4CAF50;
+            color: white;
+        }
+        
+        .status-disconnected {
+            background-color: #f44336;
+            color: white;
+        }
+        
+        .photo-preview {
+            max-width: 100%;
+            max-height: 300px;
+            display: none;
+            margin-bottom: 15px;
+            border-radius: 5px;
+        }
+        
+        .bind-plant-section {
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        
+        /* 照片上传模态框样式 */
+        .photo-upload-area {
+            border: 2px dashed var(--border-gray);
+            border-radius: 10px;
+            padding: 30px;
+            text-align: center;
+            margin-bottom: 20px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .photo-upload-area:hover {
+            border-color: var(--primary-green);
+            background-color: var(--light-green);
+        }
+        
+        .photo-upload-area i {
+            font-size: 48px;
+            color: var(--light-gray);
+            margin-bottom: 10px;
+        }
+        
+        .file-size-warning {
+            color: var(--warning-red);
+            font-size: 12px;
+            margin-top: 5px;
+            display: none;
+        }
+        
+        .photo-preview-container {
+            text-align: center;
+            margin-bottom: 20px;
+        }
     </style>
 </head>
 <body>
+    <!-- 连接状态指示器 -->
+    <div class="status-indicator status-disconnected" id="statusIndicator">数据库未连接</div>
+
     <!-- 登录页面 -->
     <div class="login-container" id="loginPage">
         <div class="login-box">
@@ -574,21 +609,25 @@
                 <p>书香伴绿意，阅读共成长</p>
             </div>
             
-            <div class="user-type-selector">
+            <div class="error-message" id="errorMessage" style="display: none;"></div>
+            
+            <div class="user-type-selector" id="userTypeSelector">
                 <div class="user-type active" data-type="user">参与者登录</div>
                 <div class="user-type" data-type="admin">工作人员登录</div>
             </div>
             
             <div class="form-group">
-                <label for="username">用户名</label>
-                <input type="text" id="username" class="form-control" placeholder="请输入用户名">
+                <label for="username">姓名</label>
+                <input type="text" id="username" class="form-control" placeholder="请输入您的姓名">
             </div>
             
-            <div class="form-group">
+            <!-- 工作人员密码输入区域 -->
+            <div class="form-group" id="adminPasswordContainer" style="display: none;">
                 <label for="password">密码</label>
                 <input type="password" id="password" class="form-control" placeholder="请输入密码">
             </div>
             
+            <!-- 植物选择区域 - 新用户使用 -->
             <div class="form-group" id="plantSelectContainer" style="display: none;">
                 <label for="plantSelect">选择认养植物</label>
                 <select id="plantSelect" class="form-control">
@@ -597,12 +636,13 @@
                 </select>
             </div>
             
-            <div class="user-bound-info" id="userBoundInfo" style="display: none;">
+            <!-- 已绑定植物信息 - 老用户使用 -->
+            <div class="user-bound-info" id="loginUserBoundInfo" style="display: none;">
                 <div class="welcome-message">欢迎回来！您已绑定植物：</div>
                 <div class="bound-plant" id="boundPlantName">植物名称 #编号</div>
             </div>
             
-            <button class="btn btn-primary" style="width: 100%;" onclick="login()">登录</button>
+            <button class="btn btn-primary" style="width: 100%;" id="loginButton">登录</button>
         </div>
     </div>
 
@@ -613,8 +653,14 @@
             <p>书香伴绿意，阅读共成长</p>
         </div>
         
+        <!-- 用户绑定植物信息 -->
+        <div class="user-bound-info" id="userBoundInfo" style="display: none;">
+            <div class="welcome-message">欢迎回来，<span id="userWelcomeName"></span>！</div>
+            <div class="bound-plant">您照料的植物：<span id="userBoundPlant"></span></div>
+        </div>
+        
         <div class="main-actions">
-            <button class="checkin-btn" onclick="openCheckinModal()" id="checkinButton">
+            <button class="checkin-btn" id="checkinButton">
                 今日打卡
                 <span id="todayCheckinIndicator" class="today-checkin-indicator" style="display: none;">今日已打卡</span>
             </button>
@@ -632,7 +678,7 @@
             <div class="recent-records">
                 <h2 class="section-title">我的打卡记录</h2>
                 <div class="record-list" id="recentRecords">
-                    <!-- 打卡记录将通过JavaScript动态生成 -->
+                    <div class="loading">加载中...</div>
                 </div>
             </div>
         </div>
@@ -644,15 +690,15 @@
             <h2>浇个盆友 - 后台管理系统</h2>
             <div>
                 <span id="adminWelcome">管理员，您好！</span>
-                <button class="btn btn-secondary" onclick="logout()" style="margin-left: 15px;">退出登录</button>
+                <button class="btn btn-secondary" id="logoutButton" style="margin-left: 15px;">退出登录</button>
             </div>
         </div>
         
         <div class="admin-layout">
             <div class="sidebar">
-                <div class="menu-item active" onclick="showSection('plantManage')">植物信息管理</div>
-                <div class="menu-item" onclick="showSection('adopterManage')">领养者管理</div>
-                <div class="menu-item" onclick="showSection('checkinReview')">
+                <div class="menu-item active" data-section="plantManage">植物信息管理</div>
+                <div class="menu-item" data-section="adopterManage">参与者管理</div>
+                <div class="menu-item" data-section="checkinReview">
                     打卡审核
                     <span class="menu-badge" id="pendingCheckinCount">0</span>
                 </div>
@@ -663,7 +709,7 @@
                 <div id="plantManage" class="content-section">
                     <div class="table-header">
                         <h3>植物信息管理</h3>
-                        <button class="btn btn-primary" onclick="openAddPlantModal()">添加植物</button>
+                        <button class="btn btn-primary" id="addPlantButton">添加植物</button>
                     </div>
                     
                     <div class="data-table">
@@ -678,26 +724,17 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                <!-- 植物数据将通过JavaScript动态生成 -->
+                                <tr><td colspan="5" class="loading">加载中...</td></tr>
                             </tbody>
                         </table>
-                        
-                        <div class="pagination">
-                            <div class="page-info">显示 <span id="plantStart">1</span>-<span id="plantEnd">0</span> 条，共 <span id="plantTotal">0</span> 条</div>
-                            <div class="page-controls">
-                                <button disabled>上一页</button>
-                                <button class="active">1</button>
-                                <button>下一页</button>
-                            </div>
-                        </div>
                     </div>
                 </div>
                 
-                <!-- 领养者管理 -->
+                <!-- 参与者管理 -->
                 <div id="adopterManage" class="content-section" style="display: none;">
                     <div class="table-header">
-                        <h3>领养者管理</h3>
-                        <button class="btn btn-primary" onclick="openAddAdopterModal()">添加领养者</button>
+                        <h3>参与者管理</h3>
+                        <button class="btn btn-primary" id="bindAdopterButton">绑定植物</button>
                     </div>
                     
                     <div class="data-table">
@@ -705,7 +742,6 @@
                             <thead>
                                 <tr>
                                     <th>姓名</th>
-                                    <th>学号</th>
                                     <th>绑定植物</th>
                                     <th>首次打卡日期</th>
                                     <th>打卡天数</th>
@@ -713,18 +749,9 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                <!-- 领养者数据将通过JavaScript动态生成 -->
+                                <tr><td colspan="5" class="loading">加载中...</td></tr>
                             </tbody>
                         </table>
-                        
-                        <div class="pagination">
-                            <div class="page-info">显示 <span id="adopterStart">1</span>-<span id="adopterEnd">0</span> 条，共 <span id="adopterTotal">0</span> 条</div>
-                            <div class="page-controls">
-                                <button disabled>上一页</button>
-                                <button class="active">1</button>
-                                <button disabled>下一页</button>
-                            </div>
-                        </div>
                     </div>
                 </div>
                 
@@ -733,8 +760,8 @@
                     <div class="table-header">
                         <h3>待审核打卡记录</h3>
                         <div>
-                            <button class="btn btn-primary" onclick="batchApprove()">批量通过</button>
-                            <button class="btn btn-secondary" style="margin-left: 10px;" onclick="batchReject()">批量拒绝</button>
+                            <button class="btn btn-primary" id="batchApproveButton">批量通过</button>
+                            <button class="btn btn-secondary" style="margin-left: 10px;" id="batchRejectButton">批量拒绝</button>
                         </div>
                     </div>
                     
@@ -744,117 +771,77 @@
                                 <tr>
                                     <th><input type="checkbox" id="selectAll"></th>
                                     <th>提交时间</th>
-                                    <th>领养者</th>
-                                    <th>学号</th>
+                                    <th>参与者</th>
                                     <th>植物信息</th>
                                     <th>打卡日期</th>
+                                    <th>照片</th>
                                     <th>操作</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <!-- 打卡数据将通过JavaScript动态生成 -->
+                                <tr><td colspan="7" class="loading">加载中...</td></tr>
                             </tbody>
                         </table>
-                        
-                        <div class="pagination">
-                            <div class="page-info">显示 <span id="checkinStart">1</span>-<span id="checkinEnd">0</span> 条，共 <span id="checkinTotal">0</span> 条</div>
-                            <div class="page-controls">
-                                <button disabled>上一页</button>
-                                <button class="active">1</button>
-                                <button disabled>下一页</button>
-                            </div>
-                        </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- 打卡模态框 -->
-    <div class="modal" id="checkinModal">
+    <!-- 照片上传模态框 -->
+    <div class="modal" id="photoUploadModal">
         <div class="modal-content">
             <div class="modal-header">
-                <h3>今日打卡</h3>
-                <button class="close-btn" onclick="closeCheckinModal()">&times;</button>
-            </div>
-            
-            <div class="plant-info">
-                <div class="plant-name" id="checkinPlantName">植物名称</div>
-                <div class="plant-id" id="checkinPlantId">植物编号</div>
+                <h3>上传打卡照片</h3>
+                <button class="close-btn" id="closePhotoUploadModal">&times;</button>
             </div>
             
             <div class="form-group">
-                <label>上传植物照片</label>
-                <div class="camera-preview" id="checkinPhotoPreview">
-                    <div>点击下方按钮拍照</div>
+                <p>请上传今日的植物照片作为打卡凭证</p>
+            </div>
+            
+            <div class="photo-upload-area" id="photoUploadArea">
+                <div>
+                    <i>📷</i>
+                    <p>点击或拖拽照片到这里</p>
+                    <p class="file-size-warning" id="fileSizeWarning">照片大小不能超过2MB</p>
                 </div>
-                <div class="camera-controls">
-                    <input type="file" id="cameraInput" accept="image/*" capture="camera" style="display: none;">
-                    <button class="btn btn-primary" onclick="document.getElementById('cameraInput').click()">拍照上传</button>
-                    <button class="btn btn-secondary" onclick="retakePhoto()">重新拍照</button>
-                </div>
+                <input type="file" id="photoUpload" accept="image/*" style="display: none;">
+            </div>
+            
+            <div class="photo-preview-container">
+                <img id="photoPreview" class="photo-preview" alt="照片预览">
             </div>
             
             <div class="btn-group">
-                <button class="btn btn-secondary" onclick="closeCheckinModal()">取消</button>
-                <button class="btn btn-primary" onclick="submitCheckin()">提交打卡</button>
+                <button class="btn btn-secondary" id="cancelPhotoButton">取消</button>
+                <button class="btn btn-primary" id="submitPhotoButton" disabled>提交打卡</button>
             </div>
         </div>
     </div>
 
-    <!-- 打卡成功模态框 -->
-    <div class="modal" id="successModal">
+    <!-- 绑定植物模态框 -->
+    <div class="modal" id="bindPlantModal">
         <div class="modal-content">
-            <div class="success-message">
-                <div class="success-icon">✓</div>
-                <h3>今日打卡成功！</h3>
-                <p>您已成功完成今日打卡，继续保持哦！</p>
-                <button class="btn btn-primary" onclick="closeSuccessModal()" style="margin-top: 20px;">确定</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- 审核详情模态框 -->
-    <div class="modal" id="reviewModal">
-        <div class="modal-content" style="max-width: 700px;">
             <div class="modal-header">
-                <h3>打卡详情审核</h3>
-                <button class="close-btn" onclick="closeReviewModal()">&times;</button>
+                <h3>绑定植物</h3>
+                <button class="close-btn" id="closeBindPlantModal">&times;</button>
             </div>
-            
             <div class="form-group">
-                <label>领养者信息</label>
-                <div style="display: flex; gap: 20px;">
-                    <div style="flex: 1;">
-                        <strong>姓名：</strong> <span id="reviewName">张三</span>
-                    </div>
-                    <div style="flex: 1;">
-                        <strong>学号：</strong> <span id="reviewStudentId">20230001</span>
-                    </div>
-                    <div style="flex: 1;">
-                        <strong>植物：</strong> <span id="reviewPlant">绿萝 #001</span>
-                    </div>
-                </div>
+                <label for="bindAdopterName">参与者姓名</label>
+                <select id="bindAdopterName" class="form-control">
+                    <option value="">请选择参与者</option>
+                </select>
             </div>
-            
             <div class="form-group">
-                <label>打卡日期</label>
-                <div id="reviewDate">2023-10-05</div>
+                <label for="bindPlantAdmin">绑定植物</label>
+                <select id="bindPlantAdmin" class="form-control">
+                    <option value="">请选择植物</option>
+                </select>
             </div>
-            
-            <div class="form-group">
-                <label>植物照片</label>
-                <div class="camera-preview">
-                    <img src="#" alt="植物照片" style="max-width: 100%;" id="reviewPhoto">
-                </div>
-                <div style="text-align: center; margin-top: 10px;">
-                    <button class="btn btn-secondary" onclick="viewOriginalImage()">查看原图</button>
-                </div>
-            </div>
-            
             <div class="btn-group">
-                <button class="btn btn-secondary" onclick="rejectCheckin()">拒绝</button>
-                <button class="btn btn-primary" onclick="approveCheckin()">通过审核</button>
+                <button class="btn btn-secondary" id="cancelBindPlant">取消</button>
+                <button class="btn btn-primary" id="saveBindPlantButton">保存</button>
             </div>
         </div>
     </div>
@@ -863,140 +850,67 @@
     <div class="modal" id="addPlantModal">
         <div class="modal-content">
             <div class="modal-header">
-                <h3>添加植物信息</h3>
-                <button class="close-btn" onclick="closeAddPlantModal()">&times;</button>
+                <h3>添加植物</h3>
+                <button class="close-btn" id="closeAddPlantModal">&times;</button>
             </div>
-            
             <div class="form-group">
-                <label>植物编号</label>
-                <input type="text" class="form-control" id="plantId" placeholder="请输入植物编号">
+                <label for="plantId">植物编号</label>
+                <input type="text" id="plantId" class="form-control" placeholder="请输入植物编号">
             </div>
-            
             <div class="form-group">
-                <label>植物名称</label>
-                <input type="text" class="form-control" id="plantName" placeholder="请输入植物名称">
+                <label for="plantName">植物名称</label>
+                <input type="text" id="plantName" class="form-control" placeholder="请输入植物名称">
             </div>
-            
             <div class="form-group">
-                <label>植物描述</label>
-                <textarea class="form-control" id="plantDescription" rows="3" placeholder="请输入植物描述"></textarea>
+                <label for="plantDescription">植物描述</label>
+                <textarea id="plantDescription" class="form-control" placeholder="请输入植物描述（可选）" rows="3"></textarea>
             </div>
-            
-            <div class="form-group">
-                <label>上传植物照片</label>
-                <div class="camera-preview" id="plantPhotoPreview">
-                    <div>点击下方按钮上传植物照片</div>
-                </div>
-                <div class="camera-controls">
-                    <input type="file" id="plantPhotoInput" accept="image/*" style="display: none;">
-                    <button class="btn btn-primary" onclick="document.getElementById('plantPhotoInput').click()">上传照片</button>
-                </div>
-            </div>
-            
             <div class="btn-group">
-                <button class="btn btn-secondary" onclick="closeAddPlantModal()">取消</button>
-                <button class="btn btn-primary" onclick="savePlant()">保存</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- 添加领养者模态框 -->
-    <div class="modal" id="addAdopterModal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>添加领养者</h3>
-                <button class="close-btn" onclick="closeAddAdopterModal()">&times;</button>
-            </div>
-            
-            <div class="form-group">
-                <label>姓名</label>
-                <input type="text" class="form-control" id="adopterName" placeholder="请输入领养者姓名">
-            </div>
-            
-            <div class="form-group">
-                <label>学号</label>
-                <input type="text" class="form-control" id="adopterStudentId" placeholder="请输入学号">
-            </div>
-            
-            <div class="form-group">
-                <label>绑定植物</label>
-                <select class="form-control" id="bindPlant">
-                    <option value="">请选择植物</option>
-                    <!-- 植物选项将通过JavaScript动态生成 -->
-                </select>
-            </div>
-            
-            <div class="form-group">
-                <label>首次打卡日期</label>
-                <input type="date" class="form-control" id="firstCheckinDate">
-            </div>
-            
-            <div class="btn-group">
-                <button class="btn btn-secondary" onclick="closeAddAdopterModal()">取消</button>
-                <button class="btn btn-primary" onclick="saveAdopter()">保存</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- 解绑确认模态框 -->
-    <div class="modal" id="unbindModal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>确认解绑</h3>
-                <button class="close-btn" onclick="closeUnbindModal()">&times;</button>
-            </div>
-            
-            <div class="form-group">
-                <p id="unbindMessage">您确定要解绑该用户与植物的绑定关系吗？</p>
-                <p style="color: var(--warning-red); font-size: 14px; margin-top: 10px;">
-                    注意：解绑后该用户的打卡记录将被清空，植物将恢复为待认养状态。
-                </p>
-            </div>
-            
-            <div class="btn-group">
-                <button class="btn btn-secondary" onclick="closeUnbindModal()">取消</button>
-                <button class="btn btn-warning" onclick="confirmUnbind()">确认解绑</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- 删除植物确认模态框 -->
-    <div class="modal" id="deletePlantModal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>确认删除植物</h3>
-                <button class="close-btn" onclick="closeDeletePlantModal()">&times;</button>
-            </div>
-            
-            <div class="form-group">
-                <p id="deletePlantMessage">您确定要删除该植物吗？</p>
-                <p style="color: var(--warning-red); font-size: 14px; margin-top: 10px;">
-                    注意：如果植物已被认养，删除植物将同时解绑用户并删除相关打卡记录。
-                </p>
-            </div>
-            
-            <div class="btn-group">
-                <button class="btn btn-secondary" onclick="closeDeletePlantModal()">取消</button>
-                <button class="btn btn-warning" onclick="confirmDeletePlant()">确认删除</button>
+                <button class="btn btn-secondary" id="cancelAddPlant">取消</button>
+                <button class="btn btn-primary" id="savePlantButton">保存</button>
             </div>
         </div>
     </div>
 
     <script>
+        // Supabase配置
+        const SUPABASE_URL = 'https://xusjjspbwxnmrcwftaqt.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh1c2pqc3Bid3hubXJjd2Z0YXF0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI3NjI4MDksImV4cCI6MjA3ODMzODgwOX0.IqVotyCUMA4y-Fp4TN-WmTgZfw1fUMc_EG4kebsHWbQ';
+        
         // 全局变量
+        let supabase = null;
         let currentUser = null;
-        let plants = []; // 存储所有植物信息
-        let adopters = []; // 存储所有领养者信息
-        let checkins = []; // 存储所有打卡记录
-        let currentUnbindStudentId = null; // 当前要解绑的学生ID
-        let currentDeletePlantId = null; // 当前要删除的植物ID
+        let plants = [];
+        let adopters = [];
+        let checkins = [];
+        let currentPhotoData = null;
+        
+        // 显示错误消息
+        function showError(message) {
+            const errorElement = document.getElementById('errorMessage');
+            errorElement.textContent = message;
+            errorElement.style.display = 'block';
+            setTimeout(() => {
+                errorElement.style.display = 'none';
+            }, 5000);
+        }
+        
+        // 更新连接状态
+        function updateConnectionStatus(isConnected) {
+            const statusIndicator = document.getElementById('statusIndicator');
+            if (isConnected) {
+                statusIndicator.textContent = '数据库已连接';
+                statusIndicator.className = 'status-indicator status-connected';
+            } else {
+                statusIndicator.textContent = '数据库未连接';
+                statusIndicator.className = 'status-indicator status-disconnected';
+            }
+        }
         
         // 获取北京时间
         function getBeijingTime() {
             const now = new Date();
-            // 获取UTC时间
             const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
-            // 转换为北京时间 (UTC+8)
             const beijingTime = new Date(utc + (3600000 * 8));
             return beijingTime;
         }
@@ -1009,199 +923,244 @@
             return `${year}-${month}-${day}`;
         }
         
-        // 格式化时间为HH:MM
-        function formatTime(date) {
-            const hours = String(date.getHours()).padStart(2, '0');
-            const minutes = String(date.getMinutes()).padStart(2, '0');
-            return `${hours}:${minutes}`;
+        // 从Supabase加载数据
+        async function loadData() {
+            try {
+                // 加载植物数据
+                const { data: plantsData, error: plantsError } = await supabase
+                    .from('plants')
+                    .select('*')
+                    .order('id');
+                
+                if (plantsError) throw plantsError;
+                plants = plantsData || [];
+                
+                // 加载参与者数据
+                const { data: adoptersData, error: adoptersError } = await supabase
+                    .from('adopters')
+                    .select('*');
+                
+                if (adoptersError) {
+                    console.error('加载参与者错误:', adoptersError);
+                    adopters = [];
+                } else {
+                    adopters = adoptersData || [];
+                }
+                
+                // 加载打卡记录
+                const { data: checkinsData, error: checkinsError } = await supabase
+                    .from('checkins')
+                    .select('*')
+                    .order('date', { ascending: false })
+                    .order('time', { ascending: false });
+                
+                if (checkinsError) throw checkinsError;
+                checkins = checkinsData || [];
+                
+                // 更新前端显示
+                updateLoginPlantSelect();
+                updateAdminPlantSelect();
+                updateAdopterSelect();
+                renderPlantTable();
+                renderAdopterTable();
+                renderCheckinTable();
+                
+                updateConnectionStatus(true);
+                return true;
+            } catch (error) {
+                console.error('加载数据错误:', error);
+                showError('加载数据失败，请检查网络连接');
+                updateConnectionStatus(false);
+                return false;
+            }
         }
         
         // 初始化数据
-        function initializeData() {
-            // 初始化默认植物数据
-            if (!localStorage.getItem('plants')) {
-                plants = [
-                    { id: '001', name: '绿萝', status: '已被认养', description: '绿萝是一种常见的室内观叶植物' },
-                    { id: '002', name: '多肉', status: '已被认养', description: '多肉植物形态多样，易于养护' },
-                    { id: '003', name: '文竹', status: '待认养', description: '文竹姿态优雅，适合室内摆放' }
-                ];
-                localStorage.setItem('plants', JSON.stringify(plants));
-            } else {
-                plants = JSON.parse(localStorage.getItem('plants'));
+        async function initializeData() {
+            const success = await loadData();
+            if (!success) {
+                document.getElementById('errorMessage').textContent = '无法连接到数据库，请检查网络连接或联系管理员';
+                document.getElementById('errorMessage').style.display = 'block';
             }
-            
-            // 初始化默认领养者数据
-            if (!localStorage.getItem('adopters')) {
-                adopters = [
-                    { name: '张三', studentId: '20230001', plantId: '001', firstCheckinDate: '2023-09-20' },
-                    { name: '李四', studentId: '20230002', plantId: '002', firstCheckinDate: '2023-09-22' }
-                ];
-                localStorage.setItem('adopters', JSON.stringify(adopters));
-            } else {
-                adopters = JSON.parse(localStorage.getItem('adopters'));
-            }
-            
-            // 初始化默认打卡记录
-            if (!localStorage.getItem('checkins')) {
-                const beijingTime = getBeijingTime();
-                const today = formatDate(beijingTime);
-                const yesterday = formatDate(new Date(beijingTime.getTime() - 24 * 60 * 60 * 1000));
-                const twoDaysAgo = formatDate(new Date(beijingTime.getTime() - 2 * 24 * 60 * 60 * 1000));
-                
-                checkins = [
-                    { studentId: '20230001', plantId: '001', date: today, time: '14:30', photo: '', status: 'pending' },
-                    { studentId: '20230001', plantId: '001', date: yesterday, time: '13:15', photo: '', status: 'approved' },
-                    { studentId: '20230001', plantId: '001', date: twoDaysAgo, time: '16:45', photo: '', status: 'approved' },
-                    { studentId: '20230002', plantId: '002', date: today, time: '09:20', photo: '', status: 'pending' }
-                ];
-                localStorage.setItem('checkins', JSON.stringify(checkins));
-            } else {
-                checkins = JSON.parse(localStorage.getItem('checkins'));
-            }
-            
-            // 更新植物状态和绑定用户信息
-            updatePlantStatus();
-            
-            // 更新前端显示
-            updatePlantSelect();
-            renderPlantTable();
-            renderAdopterTable();
-            renderCheckinTable();
         }
         
-        // 更新植物状态和绑定用户信息
-        function updatePlantStatus() {
-            plants.forEach(plant => {
-                const adopter = adopters.find(adopter => adopter.plantId === plant.id);
-                if (adopter) {
-                    plant.status = '已被认养';
-                    plant.boundUser = adopter.name;
-                    plant.boundStudentId = adopter.studentId;
-                } else {
-                    plant.status = '待认养';
-                    plant.boundUser = '';
-                    plant.boundStudentId = '';
-                }
-            });
-            localStorage.setItem('plants', JSON.stringify(plants));
-        }
-        
-        // 更新植物选择下拉菜单
-        function updatePlantSelect() {
+        // 更新登录页面植物选择下拉菜单
+        function updateLoginPlantSelect() {
             const plantSelect = document.getElementById('plantSelect');
-            const bindPlantSelect = document.getElementById('bindPlant');
             
-            // 清空现有选项
-            plantSelect.innerHTML = '<option value="">请选择您认养的植物</option>';
-            bindPlantSelect.innerHTML = '<option value="">请选择植物</option>';
-            
-            // 添加植物选项
-            plants.forEach(plant => {
-                if (plant.status === '待认养') {
-                    const option1 = document.createElement('option');
-                    option1.value = plant.id;
-                    option1.textContent = `${plant.name} #${plant.id}`;
-                    plantSelect.appendChild(option1);
-                }
+            if (plantSelect) {
+                plantSelect.innerHTML = '<option value="">请选择您认养的植物</option>';
                 
-                const option2 = document.createElement('option');
-                option2.value = plant.id;
-                option2.textContent = `${plant.name} #${plant.id}`;
-                bindPlantSelect.appendChild(option2);
-            });
+                plants.forEach(plant => {
+                    // 检查植物是否已被绑定
+                    const isBound = adopters.some(adopter => adopter.plant_id === plant.id);
+                    
+                    if (!isBound) {
+                        const option = document.createElement('option');
+                        option.value = plant.id;
+                        option.textContent = `${plant.name} #${plant.id}`;
+                        plantSelect.appendChild(option);
+                    }
+                });
+            }
+        }
+        
+        // 更新植物选择下拉菜单（管理员界面）
+        function updateAdminPlantSelect() {
+            const bindPlantAdmin = document.getElementById('bindPlantAdmin');
+            
+            if (bindPlantAdmin) {
+                bindPlantAdmin.innerHTML = '<option value="">请选择植物</option>';
+                
+                plants.forEach(plant => {
+                    // 检查植物是否已被绑定
+                    const isBound = adopters.some(adopter => adopter.plant_id === plant.id);
+                    
+                    if (!isBound) {
+                        const option = document.createElement('option');
+                        option.value = plant.id;
+                        option.textContent = `${plant.name} #${plant.id}`;
+                        bindPlantAdmin.appendChild(option);
+                    }
+                });
+            }
+        }
+        
+        // 更新参与者选择下拉菜单
+        function updateAdopterSelect() {
+            const bindAdopterName = document.getElementById('bindAdopterName');
+            
+            if (bindAdopterName) {
+                bindAdopterName.innerHTML = '<option value="">请选择参与者</option>';
+                
+                adopters.forEach(adopter => {
+                    // 只显示未绑定植物的参与者
+                    if (!adopter.plant_id) {
+                        const option = document.createElement('option');
+                        option.value = adopter.name;
+                        option.textContent = adopter.name;
+                        bindAdopterName.appendChild(option);
+                    }
+                });
+            }
         }
         
         // 渲染植物表格
         function renderPlantTable() {
             const tbody = document.querySelector('#plantTable tbody');
+            if (!tbody) return;
+            
             tbody.innerHTML = '';
             
+            if (plants.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="no-records">暂无植物数据</td></tr>';
+                return;
+            }
+            
             plants.forEach(plant => {
+                // 查找绑定此植物的参与者
+                const adopter = adopters.find(a => a.plant_id === plant.id);
+                
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td>#${plant.id}</td>
                     <td>${plant.name}</td>
-                    <td>${plant.status}</td>
-                    <td>${plant.boundUser || '-'}</td>
+                    <td>${adopter ? '已被认养' : '待认养'}</td>
+                    <td>${adopter ? adopter.name : '-'}</td>
                     <td>
-                        <button class="btn btn-secondary" onclick="editPlant('${plant.id}')">编辑</button>
-                        <button class="btn btn-secondary" style="margin-left: 5px;" onclick="viewPlant('${plant.id}')">查看</button>
-                        <button class="btn btn-warning" style="margin-left: 5px;" onclick="deletePlant('${plant.id}')">删除</button>
+                        <button class="btn btn-warning delete-plant" data-plant-id="${plant.id}">删除</button>
                     </td>
                 `;
                 tbody.appendChild(row);
             });
-            
-            document.getElementById('plantTotal').textContent = plants.length;
-            document.getElementById('plantEnd').textContent = plants.length;
         }
         
-        // 渲染领养者表格
+        // 渲染参与者表格
         function renderAdopterTable() {
             const tbody = document.querySelector('#adopterTable tbody');
+            if (!tbody) return;
+            
             tbody.innerHTML = '';
             
+            if (adopters.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="no-records">暂无参与者数据</td></tr>';
+                return;
+            }
+            
             adopters.forEach(adopter => {
-                const plant = plants.find(p => p.id === adopter.plantId);
-                const plantName = plant ? `${plant.name} #${plant.id}` : '未知植物';
+                const plant = plants.find(p => p.id === adopter.plant_id);
+                const plantName = plant ? `${plant.name} #${plant.id}` : '未绑定植物';
                 
                 // 计算用户的打卡天数
                 const userCheckins = checkins.filter(
-                    checkin => checkin.studentId === adopter.studentId && checkin.status === 'approved'
+                    checkin => checkin.student_id === adopter.name && checkin.status === 'approved'
                 );
                 const uniqueDates = [...new Set(userCheckins.map(checkin => checkin.date))];
                 const checkinDays = uniqueDates.length;
                 
+                // 计算首次打卡日期
+                let firstCheckinDate = '暂无';
+                if (userCheckins.length > 0) {
+                    const sortedDates = userCheckins.map(c => c.date).sort();
+                    firstCheckinDate = sortedDates[0];
+                }
+                
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td>${adopter.name}</td>
-                    <td>${adopter.studentId}</td>
                     <td>${plantName}</td>
-                    <td>${adopter.firstCheckinDate}</td>
+                    <td>${firstCheckinDate}</td>
                     <td>${checkinDays}天</td>
                     <td>
-                        <button class="btn btn-secondary" onclick="viewAdopterDetails('${adopter.studentId}')">查看详情</button>
-                        <button class="btn btn-warning" style="margin-left: 5px;" onclick="unbindAdopter('${adopter.studentId}')">解绑</button>
+                        <button class="btn btn-warning delete-adopter" data-adopter-name="${adopter.name}">删除</button>
                     </td>
                 `;
                 tbody.appendChild(row);
             });
-            
-            document.getElementById('adopterTotal').textContent = adopters.length;
-            document.getElementById('adopterEnd').textContent = adopters.length;
         }
         
         // 渲染打卡表格
         function renderCheckinTable() {
             const tbody = document.querySelector('#checkinTable tbody');
+            if (!tbody) return;
+            
             tbody.innerHTML = '';
             
             // 获取待审核的打卡记录
             const pendingCheckins = checkins.filter(checkin => checkin.status === 'pending');
             
-            pendingCheckins.forEach((checkin, index) => {
-                const adopter = adopters.find(a => a.studentId === checkin.studentId);
-                const plant = plants.find(p => p.id === checkin.plantId);
+            if (pendingCheckins.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="no-records">暂无待审核的打卡记录</td></tr>';
+                document.getElementById('pendingCheckinCount').textContent = '0';
+                return;
+            }
+            
+            pendingCheckins.forEach((checkin) => {
+                const adopter = adopters.find(a => a.name === checkin.student_id);
+                const plant = plants.find(p => p.id === checkin.plant_id);
                 
                 if (adopter && plant) {
                     const row = document.createElement('tr');
                     row.innerHTML = `
-                        <td><input type="checkbox" class="record-checkbox" data-index="${index}"></td>
+                        <td><input type="checkbox" class="record-checkbox" data-checkin-id="${checkin.id}"></td>
                         <td>${checkin.date} ${checkin.time}</td>
                         <td>${adopter.name}</td>
-                        <td>${adopter.studentId}</td>
                         <td>${plant.name} #${plant.id}</td>
                         <td>${checkin.date}</td>
                         <td>
-                            <button class="btn btn-primary" onclick="openReviewModal(${index})">审核</button>
+                            ${checkin.photo ? 
+                                `<button class="btn btn-secondary view-photo" data-photo="${checkin.photo}">查看照片</button>` : 
+                                '无照片'}
+                        </td>
+                        <td>
+                            <button class="btn btn-primary approve-checkin" data-checkin-id="${checkin.id}">通过</button>
+                            <button class="btn btn-warning reject-checkin" style="margin-left: 5px;" data-checkin-id="${checkin.id}">拒绝</button>
                         </td>
                     `;
                     tbody.appendChild(row);
                 }
             });
             
-            document.getElementById('checkinTotal').textContent = pendingCheckins.length;
-            document.getElementById('checkinEnd').textContent = pendingCheckins.length;
             document.getElementById('pendingCheckinCount').textContent = pendingCheckins.length;
         }
         
@@ -1211,13 +1170,13 @@
             
             // 获取用户的所有打卡记录
             const userCheckins = checkins.filter(
-                checkin => checkin.studentId === currentUser.username && checkin.status === 'approved'
+                checkin => checkin.student_id === currentUser.username && checkin.status === 'approved'
             );
             
             // 计算已打卡天数（去重）
             const uniqueDates = [...new Set(userCheckins.map(checkin => checkin.date))];
             const checkinDays = uniqueDates.length;
-            const targetDays = 21; // 目标天数
+            const targetDays = 21;
             
             // 更新进度显示
             document.getElementById('progressDays').textContent = `${checkinDays}/${targetDays}`;
@@ -1236,9 +1195,11 @@
             if (todayCheckin) {
                 todayCheckinIndicator.style.display = 'inline';
                 checkinButton.disabled = true;
+                checkinButton.innerHTML = '今日已打卡 <span id="todayCheckinIndicator" class="today-checkin-indicator" style="display: inline;">今日已打卡</span>';
             } else {
                 todayCheckinIndicator.style.display = 'none';
                 checkinButton.disabled = false;
+                checkinButton.innerHTML = '今日打卡 <span id="todayCheckinIndicator" class="today-checkin-indicator" style="display: none;">今日已打卡</span>';
             }
             
             // 更新打卡记录
@@ -1250,19 +1211,14 @@
             if (!currentUser) return;
             
             const recentRecords = document.getElementById('recentRecords');
+            if (!recentRecords) return;
+            
             recentRecords.innerHTML = '';
             
             // 获取用户的所有打卡记录（已审核的）
             const userCheckins = checkins.filter(
-                checkin => checkin.studentId === currentUser.username && checkin.status === 'approved'
+                checkin => checkin.student_id === currentUser.username && checkin.status === 'approved'
             );
-            
-            // 按日期排序（最新的在前）
-            userCheckins.sort((a, b) => {
-                const dateA = new Date(a.date);
-                const dateB = new Date(b.date);
-                return dateB - dateA;
-            });
             
             if (userCheckins.length === 0) {
                 recentRecords.innerHTML = '<div class="no-records">暂无打卡记录</div>';
@@ -1271,7 +1227,7 @@
             
             // 显示所有打卡记录
             userCheckins.forEach(checkin => {
-                const plant = plants.find(p => p.id === checkin.plantId);
+                const plant = plants.find(p => p.id === checkin.plant_id);
                 const plantName = plant ? `${plant.name} #${plant.id}` : '未知植物';
                 
                 const recordItem = document.createElement('div');
@@ -1284,84 +1240,20 @@
             });
         }
         
-        // 用户类型选择
-        document.querySelectorAll('.user-type').forEach(item => {
-            item.addEventListener('click', function() {
-                document.querySelectorAll('.user-type').forEach(i => i.classList.remove('active'));
-                this.classList.add('active');
-                
-                const plantSelectContainer = document.getElementById('plantSelectContainer');
-                const userBoundInfo = document.getElementById('userBoundInfo');
-                
-                if (this.dataset.type === 'user') {
-                    // 检查用户名是否已输入
-                    const username = document.getElementById('username').value;
-                    if (username) {
-                        checkUserBinding(username);
-                    } else {
-                        plantSelectContainer.style.display = 'block';
-                        userBoundInfo.style.display = 'none';
-                    }
-                } else {
-                    plantSelectContainer.style.display = 'none';
-                    userBoundInfo.style.display = 'none';
-                }
-            });
-        });
-        
-        // 检查用户名输入
-        document.getElementById('username').addEventListener('input', function() {
+        // 登录功能
+        async function login() {
+            const username = document.getElementById('username').value.trim();
             const userType = document.querySelector('.user-type.active').dataset.type;
-            if (userType === 'user') {
-                checkUserBinding(this.value);
-            }
-        });
-        
-        // 检查用户绑定状态
-        function checkUserBinding(username) {
-            const plantSelectContainer = document.getElementById('plantSelectContainer');
-            const userBoundInfo = document.getElementById('userBoundInfo');
-            const boundPlantName = document.getElementById('boundPlantName');
             
             if (!username) {
-                plantSelectContainer.style.display = 'block';
-                userBoundInfo.style.display = 'none';
-                return;
-            }
-            
-            // 检查用户是否已绑定植物
-            const adopter = adopters.find(a => a.studentId === username);
-            if (adopter) {
-                const plant = plants.find(p => p.id === adopter.plantId);
-                if (plant) {
-                    boundPlantName.textContent = `${plant.name} #${plant.id}`;
-                    plantSelectContainer.style.display = 'none';
-                    userBoundInfo.style.display = 'block';
-                    return;
-                }
-            }
-            
-            // 用户未绑定植物
-            plantSelectContainer.style.display = 'block';
-            userBoundInfo.style.display = 'none';
-        }
-        
-        // 登录功能
-        function login() {
-            const username = document.getElementById('username').value;
-            const password = document.getElementById('password').value;
-            const userType = document.querySelector('.user-type.active').dataset.type;
-            const plantSelect = document.getElementById('plantSelect');
-            
-            if (!username || !password) {
-                alert('请输入用户名和密码');
+                showError('请输入姓名');
                 return;
             }
             
             // 工作人员账号验证
             if (userType === 'admin') {
+                const password = document.getElementById('password').value;
                 if (username === 'zrt' && password === '123456') {
-                    // 管理员登录成功
                     currentUser = {
                         username: username,
                         type: userType
@@ -1372,83 +1264,163 @@
                     document.getElementById('adminWelcome').textContent = username + '，您好！';
                     return;
                 } else {
-                    alert('工作人员账号或密码错误');
+                    showError('工作人员账号或密码错误');
                     return;
                 }
             }
             
-            // 普通用户登录
+            // 普通用户登录 - 无需密码
             if (userType === 'user') {
-                // 检查用户是否已绑定植物
-                const adopter = adopters.find(a => a.studentId === username);
-                if (adopter) {
-                    // 用户已绑定植物，直接登录
-                    const plant = plants.find(p => p.id === adopter.plantId);
-                    if (plant) {
-                        currentUser = {
-                            username: username,
-                            type: userType,
-                            plantId: plant.id,
-                            plantName: plant.name
-                        };
+                // 检查用户是否已存在
+                let adopter = adopters.find(a => a.name === username);
+                const selectedPlantId = document.getElementById('plantSelect').value;
+                
+                if (!adopter) {
+                    // 新用户必须选择植物
+                    if (!selectedPlantId) {
+                        showError('请选择要认养的植物');
+                        return;
+                    }
+                    
+                    // 创建新用户
+                    try {
+                        const { data, error } = await supabase
+                            .from('adopters')
+                            .insert([{ 
+                                name: username,
+                                plant_id: selectedPlantId
+                            }])
+                            .select();
                         
-                        // 更新前台显示的用户植物信息
-                        updateUserProgress();
+                        if (error) {
+                            console.error('创建用户错误:', error);
+                            showError('自动创建用户失败: ' + error.message);
+                            return;
+                        }
                         
-                        document.getElementById('loginPage').style.display = 'none';
-                        document.getElementById('frontendPage').style.display = 'block';
+                        // 添加到本地数组
+                        if (data && data.length > 0) {
+                            adopters.push(data[0]);
+                            adopter = data[0];
+                        } else {
+                            const newAdopter = { name: username, plant_id: selectedPlantId };
+                            adopters.push(newAdopter);
+                            adopter = newAdopter;
+                        }
+                        
+                        // 更新植物状态
+                        await updatePlantStatus(selectedPlantId, username);
+                        
+                        // 更新管理员界面
+                        updateAdminPlantSelect();
+                        updateAdopterSelect();
+                        renderPlantTable();
+                        renderAdopterTable();
+                    } catch (error) {
+                        console.error('创建用户错误:', error);
+                        showError('自动创建用户失败: ' + error.message);
+                        return;
+                    }
+                } else {
+                    // 老用户，不应该选择植物
+                    if (selectedPlantId && selectedPlantId !== adopter.plant_id) {
+                        showError('您已绑定植物，不能重新选择');
                         return;
                     }
                 }
                 
-                // 用户未绑定植物，需要选择植物
-                if (!plantSelect.value) {
-                    alert('请选择您认养的植物');
-                    return;
-                }
-                
-                const selectedPlantId = plantSelect.value;
-                const selectedPlant = plants.find(p => p.id === selectedPlantId);
-                
-                if (!selectedPlant) {
-                    alert('选择的植物不存在');
-                    return;
-                }
-                
-                // 检查植物是否已被认养
-                if (selectedPlant.status === '已被认养') {
-                    alert('该植物已被认养，请选择其他植物');
-                    return;
-                }
-                
-                // 创建新领养者
-                const newAdopter = {
-                    name: username, // 使用用户名作为姓名
-                    studentId: username,
-                    plantId: selectedPlantId,
-                    firstCheckinDate: formatDate(getBeijingTime())
-                };
-                
-                // 添加到领养者列表
-                adopters.push(newAdopter);
-                localStorage.setItem('adopters', JSON.stringify(adopters));
-                
-                // 更新植物状态
-                updatePlantStatus();
-                
+                // 设置当前用户
                 currentUser = {
                     username: username,
                     type: userType,
-                    plantId: selectedPlantId,
-                    plantName: selectedPlant.name
+                    plantId: adopter.plant_id,
+                    plantName: null
                 };
                 
-                // 更新前台显示的用户植物信息
+                // 获取植物名称
+                if (adopter.plant_id) {
+                    const plant = plants.find(p => p.id === adopter.plant_id);
+                    if (plant) {
+                        currentUser.plantName = plant.name;
+                        
+                        // 显示用户绑定信息
+                        document.getElementById('userWelcomeName').textContent = username;
+                        document.getElementById('userBoundPlant').textContent = `${plant.name} #${plant.id}`;
+                        document.getElementById('userBoundInfo').style.display = 'block';
+                    }
+                }
+                
+                // 更新界面
                 updateUserProgress();
                 
                 document.getElementById('loginPage').style.display = 'none';
                 document.getElementById('frontendPage').style.display = 'block';
             }
+        }
+        
+        // 管理员绑定植物
+        async function bindPlantAdmin() {
+            const adopterName = document.getElementById('bindAdopterName').value;
+            const plantId = document.getElementById('bindPlantAdmin').value;
+            
+            if (!adopterName || !plantId) {
+                showError('请选择参与者和植物');
+                return;
+            }
+            
+            try {
+                // 更新数据库
+                const { error } = await supabase
+                    .from('adopters')
+                    .update({ plant_id: plantId })
+                    .eq('name', adopterName);
+                
+                if (error) {
+                    console.error('绑定植物错误:', error);
+                    showError('绑定植物失败: ' + error.message);
+                    return;
+                }
+                
+                // 更新本地数据
+                const adopterIndex = adopters.findIndex(a => a.name === adopterName);
+                if (adopterIndex !== -1) {
+                    adopters[adopterIndex].plant_id = plantId;
+                }
+                
+                // 更新植物状态
+                await updatePlantStatus(plantId, adopterName);
+                
+                // 更新界面
+                closeBindPlantModal();
+                updateAdminPlantSelect();
+                updateAdopterSelect();
+                renderPlantTable();
+                renderAdopterTable();
+                
+                alert('植物绑定成功！');
+            } catch (error) {
+                console.error('绑定植物错误:', error);
+                showError('绑定植物失败: ' + error.message);
+            }
+        }
+        
+        // 更新植物状态
+        async function updatePlantStatus(plantId, adopterName) {
+            // 更新数据库中的植物状态
+            const { error } = await supabase
+                .from('plants')
+                .update({
+                    status: '已被认养',
+                    bound_user: adopterName
+                })
+                .eq('id', plantId);
+            
+            if (error) {
+                console.error('更新植物状态错误:', error);
+            }
+            
+            // 重新加载数据以确保同步
+            await loadData();
         }
         
         // 退出登录
@@ -1462,292 +1434,39 @@
             document.getElementById('username').value = '';
             document.getElementById('password').value = '';
             document.getElementById('plantSelect').value = '';
+            
+            // 重置登录界面显示
             document.getElementById('plantSelectContainer').style.display = 'none';
-            document.getElementById('userBoundInfo').style.display = 'none';
+            document.getElementById('loginUserBoundInfo').style.display = 'none';
+            document.getElementById('adminPasswordContainer').style.display = 'none';
         }
         
         // 后台菜单切换
         function showSection(sectionId) {
-            // 隐藏所有内容区域
             document.querySelectorAll('.content-section').forEach(section => {
                 section.style.display = 'none';
             });
             
-            // 移除所有菜单激活状态
             document.querySelectorAll('.menu-item').forEach(item => {
                 item.classList.remove('active');
             });
             
-            // 显示选中的内容区域
             document.getElementById(sectionId).style.display = 'block';
-            
-            // 设置菜单激活状态
             event.target.classList.add('active');
         }
         
-        // 打开打卡模态框
-        function openCheckinModal() {
-            if (!currentUser || !currentUser.plantId) {
-                alert('请先登录并选择植物');
-                return;
-            }
-            
-            // 检查今日是否已打卡
-            const today = formatDate(getBeijingTime());
-            const userCheckins = checkins.filter(
-                checkin => checkin.studentId === currentUser.username && 
-                          checkin.date === today
-            );
-            
-            if (userCheckins.length > 0) {
-                alert('您今天已经打卡过了，明天再来吧！');
-                return;
-            }
-            
-            const plant = plants.find(p => p.id === currentUser.plantId);
-            if (plant) {
-                document.getElementById('checkinPlantName').textContent = plant.name;
-                document.getElementById('checkinPlantId').textContent = `植物编号: #${plant.id}`;
-            }
-            
-            document.getElementById('checkinModal').style.display = 'flex';
+        // 打开绑定植物模态框（管理员）
+        function openBindPlantModal() {
+            document.getElementById('bindPlantModal').style.display = 'flex';
         }
         
-        // 关闭打卡模态框
-        function closeCheckinModal() {
-            document.getElementById('checkinModal').style.display = 'none';
+        // 关闭绑定植物模态框
+        function closeBindPlantModal() {
+            document.getElementById('bindPlantModal').style.display = 'none';
+            // 清空表单
+            document.getElementById('bindAdopterName').value = '';
+            document.getElementById('bindPlantAdmin').value = '';
         }
-        
-        // 提交打卡
-        function submitCheckin() {
-            if (!currentUser || !currentUser.plantId) {
-                alert('用户信息错误，请重新登录');
-                return;
-            }
-            
-            // 创建新的打卡记录
-            const beijingTime = getBeijingTime();
-            const date = formatDate(beijingTime);
-            const time = formatTime(beijingTime);
-            
-            const newCheckin = {
-                studentId: currentUser.username, // 使用用户名作为学号
-                plantId: currentUser.plantId,
-                date: date,
-                time: time,
-                photo: document.getElementById('checkinPhotoPreview').querySelector('img')?.src || '',
-                status: 'pending' // 待审核状态
-            };
-            
-            checkins.push(newCheckin);
-            localStorage.setItem('checkins', JSON.stringify(checkins));
-            
-            closeCheckinModal();
-            setTimeout(() => {
-                document.getElementById('successModal').style.display = 'flex';
-            }, 300);
-            
-            // 更新后台数据
-            renderCheckinTable();
-        }
-        
-        // 关闭成功模态框
-        function closeSuccessModal() {
-            document.getElementById('successModal').style.display = 'none';
-            // 更新用户进度
-            updateUserProgress();
-        }
-        
-        // 打开审核模态框
-        function openReviewModal(index) {
-            const pendingCheckins = checkins.filter(checkin => checkin.status === 'pending');
-            if (index >= pendingCheckins.length) return;
-            
-            const checkin = pendingCheckins[index];
-            const adopter = adopters.find(a => a.studentId === checkin.studentId);
-            const plant = plants.find(p => p.id === checkin.plantId);
-            
-            if (adopter && plant) {
-                document.getElementById('reviewName').textContent = adopter.name;
-                document.getElementById('reviewStudentId').textContent = adopter.studentId;
-                document.getElementById('reviewPlant').textContent = `${plant.name} #${plant.id}`;
-                document.getElementById('reviewDate').textContent = checkin.date;
-                
-                if (checkin.photo) {
-                    document.getElementById('reviewPhoto').src = checkin.photo;
-                }
-                
-                // 保存当前审核记录的索引
-                document.getElementById('reviewModal').dataset.checkinIndex = index;
-            }
-            
-            document.getElementById('reviewModal').style.display = 'flex';
-        }
-        
-        // 关闭审核模态框
-        function closeReviewModal() {
-            document.getElementById('reviewModal').style.display = 'none';
-        }
-        
-        // 拍照功能
-        document.getElementById('cameraInput').addEventListener('change', function(e) {
-            const file = e.target.files[0];
-            if (file) {
-                if (file.size > 5 * 1024 * 1024) {
-                    alert('图片大小不能超过5MB');
-                    return;
-                }
-                
-                if (file.type !== 'image/jpeg' && file.type !== 'image/png') {
-                    alert('只支持JPG/PNG格式');
-                    return;
-                }
-                
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    const preview = document.getElementById('checkinPhotoPreview');
-                    preview.innerHTML = `<img src="${e.target.result}" alt="打卡照片">`;
-                };
-                reader.readAsDataURL(file);
-            }
-        });
-        
-        // 重新拍照
-        function retakePhoto() {
-            document.getElementById('checkinPhotoPreview').innerHTML = '<div>点击下方按钮拍照</div>';
-            document.getElementById('cameraInput').value = '';
-        }
-        
-        // 查看原图
-        function viewOriginalImage() {
-            alert('查看原图功能');
-        }
-        
-        // 审核通过
-        function approveCheckin() {
-            const index = document.getElementById('reviewModal').dataset.checkinIndex;
-            const pendingCheckins = checkins.filter(checkin => checkin.status === 'pending');
-            
-            if (index !== undefined && index < pendingCheckins.length) {
-                const checkin = pendingCheckins[index];
-                // 找到原始记录并更新状态
-                const originalIndex = checkins.findIndex(c => 
-                    c.studentId === checkin.studentId && 
-                    c.date === checkin.date && 
-                    c.time === checkin.time
-                );
-                
-                if (originalIndex !== -1) {
-                    checkins[originalIndex].status = 'approved';
-                    localStorage.setItem('checkins', JSON.stringify(checkins));
-                    
-                    // 更新显示
-                    renderCheckinTable();
-                    alert('打卡记录已通过审核');
-                }
-            }
-            
-            closeReviewModal();
-        }
-        
-        // 审核拒绝
-        function rejectCheckin() {
-            const index = document.getElementById('reviewModal').dataset.checkinIndex;
-            const pendingCheckins = checkins.filter(checkin => checkin.status === 'pending');
-            
-            if (index !== undefined && index < pendingCheckins.length) {
-                const checkin = pendingCheckins[index];
-                // 找到原始记录并更新状态
-                const originalIndex = checkins.findIndex(c => 
-                    c.studentId === checkin.studentId && 
-                    c.date === checkin.date && 
-                    c.time === checkin.time
-                );
-                
-                if (originalIndex !== -1) {
-                    checkins[originalIndex].status = 'rejected';
-                    localStorage.setItem('checkins', JSON.stringify(checkins));
-                    
-                    // 更新显示
-                    renderCheckinTable();
-                    alert('打卡记录已被拒绝');
-                }
-            }
-            
-            closeReviewModal();
-        }
-        
-        // 批量通过
-        function batchApprove() {
-            const selected = document.querySelectorAll('.record-checkbox:checked');
-            if (selected.length === 0) {
-                alert('请先选择要审核的记录');
-                return;
-            }
-            
-            selected.forEach(checkbox => {
-                const index = parseInt(checkbox.dataset.index);
-                const pendingCheckins = checkins.filter(checkin => checkin.status === 'pending');
-                
-                if (index < pendingCheckins.length) {
-                    const checkin = pendingCheckins[index];
-                    // 找到原始记录并更新状态
-                    const originalIndex = checkins.findIndex(c => 
-                        c.studentId === checkin.studentId && 
-                        c.date === checkin.date && 
-                        c.time === checkin.time
-                    );
-                    
-                    if (originalIndex !== -1) {
-                        checkins[originalIndex].status = 'approved';
-                    }
-                }
-            });
-            
-            localStorage.setItem('checkins', JSON.stringify(checkins));
-            renderCheckinTable();
-            alert(`已通过 ${selected.length} 条打卡记录`);
-        }
-        
-        // 批量拒绝
-        function batchReject() {
-            const selected = document.querySelectorAll('.record-checkbox:checked');
-            if (selected.length === 0) {
-                alert('请先选择要审核的记录');
-                return;
-            }
-            
-            selected.forEach(checkbox => {
-                const index = parseInt(checkbox.dataset.index);
-                const pendingCheckins = checkins.filter(checkin => checkin.status === 'pending');
-                
-                if (index < pendingCheckins.length) {
-                    const checkin = pendingCheckins[index];
-                    // 找到原始记录并更新状态
-                    const originalIndex = checkins.findIndex(c => 
-                        c.studentId === checkin.studentId && 
-                        c.date === checkin.date && 
-                        c.time === checkin.time
-                    );
-                    
-                    if (originalIndex !== -1) {
-                        checkins[originalIndex].status = 'rejected';
-                    }
-                }
-            });
-            
-            localStorage.setItem('checkins', JSON.stringify(checkins));
-            renderCheckinTable();
-            alert(`已拒绝 ${selected.length} 条打卡记录`);
-        }
-        
-        // 全选/取消全选
-        document.getElementById('selectAll').addEventListener('change', function() {
-            const checkboxes = document.querySelectorAll('.record-checkbox');
-            checkboxes.forEach(checkbox => {
-                checkbox.checked = this.checked;
-            });
-        });
         
         // 打开添加植物模态框
         function openAddPlantModal() {
@@ -1757,290 +1476,537 @@
         // 关闭添加植物模态框
         function closeAddPlantModal() {
             document.getElementById('addPlantModal').style.display = 'none';
-            // 重置表单
+            // 清空表单
             document.getElementById('plantId').value = '';
             document.getElementById('plantName').value = '';
             document.getElementById('plantDescription').value = '';
-            document.getElementById('plantPhotoPreview').innerHTML = '<div>点击下方按钮上传植物照片</div>';
-            document.getElementById('plantPhotoInput').value = '';
         }
         
-        // 保存植物信息
-        function savePlant() {
+        // 添加植物
+        async function addPlant() {
             const plantId = document.getElementById('plantId').value;
             const plantName = document.getElementById('plantName').value;
+            const plantDescription = document.getElementById('plantDescription').value;
             
             if (!plantId || !plantName) {
-                alert('请填写植物编号和名称');
+                showError('请填写植物编号和名称');
                 return;
             }
             
-            // 检查植物编号是否已存在
-            if (plants.some(p => p.id === plantId)) {
-                alert('植物编号已存在，请使用其他编号');
+            // 检查植物ID是否已存在
+            if (plants.some(plant => plant.id === plantId)) {
+                showError('植物编号已存在');
                 return;
             }
             
-            // 创建新植物对象
-            const newPlant = {
-                id: plantId,
-                name: plantName,
-                status: '待认养',
-                description: document.getElementById('plantDescription').value
-            };
-            
-            // 添加到植物列表
-            plants.push(newPlant);
-            localStorage.setItem('plants', JSON.stringify(plants));
-            
-            // 更新前端显示
-            updatePlantSelect();
-            renderPlantTable();
-            
-            alert('植物信息添加成功');
-            closeAddPlantModal();
-        }
-        
-        // 编辑植物
-        function editPlant(plantId) {
-            const plant = plants.find(p => p.id === plantId);
-            if (plant) {
-                document.getElementById('plantId').value = plant.id;
-                document.getElementById('plantName').value = plant.name;
-                document.getElementById('plantDescription').value = plant.description || '';
+            try {
+                const { error } = await supabase
+                    .from('plants')
+                    .insert([{
+                        id: plantId,
+                        name: plantName,
+                        description: plantDescription,
+                        status: '待认养'
+                    }]);
                 
-                // 打开编辑模态框
-                document.getElementById('addPlantModal').style.display = 'flex';
-            }
-        }
-        
-        // 查看植物
-        function viewPlant(plantId) {
-            const plant = plants.find(p => p.id === plantId);
-            if (plant) {
-                alert(`植物编号: #${plant.id}\n植物名称: ${plant.name}\n状态: ${plant.status}\n描述: ${plant.description || '暂无描述'}`);
+                if (error) {
+                    console.error('添加植物错误:', error);
+                    showError('添加植物失败: ' + error.message);
+                    return;
+                }
+                
+                // 重新加载数据
+                await loadData();
+                closeAddPlantModal();
+                alert('植物添加成功！');
+            } catch (error) {
+                console.error('添加植物错误:', error);
+                showError('添加植物失败: ' + error.message);
             }
         }
         
         // 删除植物
-        function deletePlant(plantId) {
-            const plant = plants.find(p => p.id === plantId);
-            if (plant) {
-                currentDeletePlantId = plantId;
-                document.getElementById('deletePlantMessage').textContent = 
-                    `您确定要删除植物 "${plant.name} #${plant.id}" 吗？`;
-                
-                document.getElementById('deletePlantModal').style.display = 'flex';
-            }
-        }
-        
-        // 关闭删除植物模态框
-        function closeDeletePlantModal() {
-            document.getElementById('deletePlantModal').style.display = 'none';
-            currentDeletePlantId = null;
-        }
-        
-        // 确认删除植物
-        function confirmDeletePlant() {
-            if (!currentDeletePlantId) return;
+        async function deletePlant(plantId) {
+            if (!confirm('确定要删除这个植物吗？')) return;
             
-            const plantIndex = plants.findIndex(p => p.id === currentDeletePlantId);
-            if (plantIndex !== -1) {
-                const plant = plants[plantIndex];
+            // 检查植物是否已被绑定
+            const adopter = adopters.find(a => a.plant_id === plantId);
+            if (adopter) {
+                showError('该植物已被绑定，无法删除');
+                return;
+            }
+            
+            const { error } = await supabase
+                .from('plants')
+                .delete()
+                .eq('id', plantId);
+            
+            if (error) {
+                console.error('删除植物错误:', error);
+                showError('删除植物失败');
+                return;
+            }
+            
+            // 重新加载数据
+            await loadData();
+            alert('植物删除成功');
+        }
+        
+        // 删除参与者
+        async function deleteAdopter(adopterName) {
+            if (!confirm('确定要删除这个参与者吗？')) return;
+            
+            const adopter = adopters.find(a => a.name === adopterName);
+            
+            const { error } = await supabase
+                .from('adopters')
+                .delete()
+                .eq('name', adopterName);
+            
+            if (error) {
+                console.error('删除参与者错误:', error);
+                showError('删除参与者失败');
+                return;
+            }
+            
+            // 从本地数组移除
+            adopters = adopters.filter(a => a.name !== adopterName);
+            
+            // 如果参与者绑定了植物，更新植物状态
+            if (adopter && adopter.plant_id) {
+                const { error: plantError } = await supabase
+                    .from('plants')
+                    .update({
+                        status: '待认养',
+                        bound_user: ''
+                    })
+                    .eq('id', adopter.plant_id);
                 
-                // 如果植物已被认养，需要先解绑用户
-                if (plant.status === '已被认养') {
-                    // 找到绑定的用户
-                    const adopterIndex = adopters.findIndex(a => a.plantId === currentDeletePlantId);
-                    if (adopterIndex !== -1) {
-                        const adopter = adopters[adopterIndex];
-                        
-                        // 删除该用户的所有打卡记录
-                        checkins = checkins.filter(checkin => checkin.studentId !== adopter.studentId);
-                        
-                        // 删除领养者
-                        adopters.splice(adopterIndex, 1);
-                    }
+                if (plantError) {
+                    console.error('更新植物状态错误:', plantError);
                 }
-                
-                // 删除植物
-                plants.splice(plantIndex, 1);
-                localStorage.setItem('plants', JSON.stringify(plants));
-                localStorage.setItem('adopters', JSON.stringify(adopters));
-                localStorage.setItem('checkins', JSON.stringify(checkins));
-                
-                // 更新前端显示
-                updatePlantSelect();
-                renderPlantTable();
-                renderAdopterTable();
-                renderCheckinTable();
-                
-                alert('植物删除成功');
             }
             
-            closeDeletePlantModal();
-        }
-        
-        // 打开添加领养者模态框
-        function openAddAdopterModal() {
-            document.getElementById('addAdopterModal').style.display = 'flex';
-        }
-        
-        // 关闭添加领养者模态框
-        function closeAddAdopterModal() {
-            document.getElementById('addAdopterModal').style.display = 'none';
-            // 重置表单
-            document.getElementById('adopterName').value = '';
-            document.getElementById('adopterStudentId').value = '';
-            document.getElementById('bindPlant').value = '';
-            document.getElementById('firstCheckinDate').value = '';
-        }
-        
-        // 保存领养者信息
-        function saveAdopter() {
-            const adopterName = document.getElementById('adopterName').value;
-            const adopterStudentId = document.getElementById('adopterStudentId').value;
-            const bindPlant = document.getElementById('bindPlant');
-            const plantId = bindPlant.value;
-            const firstCheckinDate = document.getElementById('firstCheckinDate').value || formatDate(getBeijingTime());
+            // 重新加载数据以确保同步
+            await loadData();
             
-            if (!adopterName || !adopterStudentId || !plantId) {
-                alert('请填写完整信息');
+            alert('参与者删除成功');
+        }
+        
+        // 打开照片上传模态框
+        function openPhotoUploadModal() {
+            document.getElementById('photoUploadModal').style.display = 'flex';
+            resetPhotoUploadModal();
+        }
+        
+        // 关闭照片上传模态框
+        function closePhotoUploadModal() {
+            document.getElementById('photoUploadModal').style.display = 'none';
+            resetPhotoUploadModal();
+        }
+        
+        // 重置照片上传模态框
+        function resetPhotoUploadModal() {
+            currentPhotoData = null;
+            document.getElementById('photoPreview').style.display = 'none';
+            document.getElementById('submitPhotoButton').disabled = true;
+            document.getElementById('fileSizeWarning').style.display = 'none';
+            document.getElementById('photoUpload').value = '';
+        }
+        
+        // 处理照片上传
+        function handlePhotoUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            // 检查文件类型
+            if (!file.type.startsWith('image/')) {
+                showError('请选择图片文件');
                 return;
             }
             
-            // 检查学号是否已存在
-            if (adopters.some(a => a.studentId === adopterStudentId)) {
-                alert('学号已存在，请使用其他学号');
+            // 检查文件大小 (2MB)
+            if (file.size > 2 * 1024 * 1024) {
+                document.getElementById('fileSizeWarning').style.display = 'block';
+                document.getElementById('submitPhotoButton').disabled = true;
+                return;
+            } else {
+                document.getElementById('fileSizeWarning').style.display = 'none';
+            }
+            
+            // 读取文件为DataURL
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                currentPhotoData = e.target.result;
+                
+                // 显示照片预览
+                const photoPreview = document.getElementById('photoPreview');
+                photoPreview.src = currentPhotoData;
+                photoPreview.style.display = 'block';
+                
+                // 启用提交按钮
+                document.getElementById('submitPhotoButton').disabled = false;
+            };
+            reader.readAsDataURL(file);
+        }
+        
+        // 提交打卡（带照片）
+        async function submitCheckinWithPhoto() {
+            if (!currentUser || !currentUser.plantId) {
+                showError('您尚未绑定植物，无法打卡');
                 return;
             }
             
-            // 检查植物是否已被认养
-            const plant = plants.find(p => p.id === plantId);
-            if (plant && plant.status === '已被认养') {
-                alert('该植物已被认养，请选择其他植物');
+            if (!currentPhotoData) {
+                showError('请上传照片');
                 return;
             }
             
-            // 创建新领养者对象
-            const newAdopter = {
-                name: adopterName,
-                studentId: adopterStudentId,
-                plantId: plantId,
-                firstCheckinDate: firstCheckinDate
+            // 检查今日是否已打卡
+            const today = formatDate(getBeijingTime());
+            const userCheckins = checkins.filter(
+                checkin => checkin.student_id === currentUser.username && checkin.status === 'approved'
+            );
+            const todayCheckin = userCheckins.find(checkin => checkin.date === today);
+            
+            if (todayCheckin) {
+                showError('今日已打卡，请勿重复打卡');
+                closePhotoUploadModal();
+                return;
+            }
+            
+            // 创建新的打卡记录
+            const beijingTime = getBeijingTime();
+            const date = formatDate(beijingTime);
+            const time = beijingTime.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+            
+            const newCheckin = {
+                student_id: currentUser.username,
+                plant_id: currentUser.plantId,
+                date: date,
+                time: time,
+                photo: currentPhotoData,
+                status: 'pending'
             };
             
-            // 添加到领养者列表
-            adopters.push(newAdopter);
-            localStorage.setItem('adopters', JSON.stringify(adopters));
-            
-            // 更新植物状态
-            updatePlantStatus();
-            
-            // 更新前端显示
-            updatePlantSelect();
-            renderPlantTable();
-            renderAdopterTable();
-            
-            alert('领养者信息添加成功');
-            closeAddAdopterModal();
-        }
-        
-        // 查看领养者详情
-        function viewAdopterDetails(studentId) {
-            const adopter = adopters.find(a => a.studentId === studentId);
-            if (adopter) {
-                const plant = plants.find(p => p.id === adopter.plantId);
-                const plantName = plant ? `${plant.name} #${plant.id}` : '未知植物';
+            try {
+                // 添加到数据库
+                const { data, error } = await supabase
+                    .from('checkins')
+                    .insert([newCheckin])
+                    .select();
                 
-                // 计算用户的打卡天数
-                const userCheckins = checkins.filter(
-                    checkin => checkin.studentId === studentId && checkin.status === 'approved'
-                );
-                const uniqueDates = [...new Set(userCheckins.map(checkin => checkin.date))];
-                const checkinDays = uniqueDates.length;
+                if (error) {
+                    console.error('添加打卡记录错误:', error);
+                    showError('提交打卡失败，请重试: ' + error.message);
+                    return;
+                }
                 
-                alert(`姓名: ${adopter.name}\n学号: ${adopter.studentId}\n绑定植物: ${plantName}\n首次打卡日期: ${adopter.firstCheckinDate}\n打卡天数: ${checkinDays}天`);
-            }
-        }
-        
-        // 解绑领养者
-        function unbindAdopter(studentId) {
-            const adopter = adopters.find(a => a.studentId === studentId);
-            if (adopter) {
-                currentUnbindStudentId = studentId;
-                const plant = plants.find(p => p.id === adopter.plantId);
-                const plantName = plant ? `${plant.name} #${plant.id}` : '未知植物';
+                // 添加到本地数组
+                if (data && data.length > 0) {
+                    checkins.push(data[0]);
+                } else {
+                    checkins.push(newCheckin);
+                }
                 
-                document.getElementById('unbindMessage').textContent = 
-                    `您确定要解绑用户 "${adopter.name}" (${studentId}) 与植物 "${plantName}" 的绑定关系吗？`;
-                
-                document.getElementById('unbindModal').style.display = 'flex';
-            }
-        }
-        
-        // 关闭解绑模态框
-        function closeUnbindModal() {
-            document.getElementById('unbindModal').style.display = 'none';
-            currentUnbindStudentId = null;
-        }
-        
-        // 确认解绑
-        function confirmUnbind() {
-            if (!currentUnbindStudentId) return;
-            
-            const adopterIndex = adopters.findIndex(a => a.studentId === currentUnbindStudentId);
-            if (adopterIndex !== -1) {
-                // 删除领养者
-                adopters.splice(adopterIndex, 1);
-                localStorage.setItem('adopters', JSON.stringify(adopters));
-                
-                // 删除该用户的所有打卡记录
-                checkins = checkins.filter(checkin => checkin.studentId !== currentUnbindStudentId);
-                localStorage.setItem('checkins', JSON.stringify(checkins));
-                
-                // 更新植物状态
-                updatePlantStatus();
-                
-                // 更新前端显示
-                updatePlantSelect();
-                renderPlantTable();
-                renderAdopterTable();
+                // 更新后台数据
                 renderCheckinTable();
                 
-                alert('解绑成功，该用户的打卡记录已清空');
+                // 显示成功消息
+                alert('打卡提交成功，等待审核！');
+                
+                // 关闭照片上传模态框
+                closePhotoUploadModal();
+                
+                // 重新加载数据以确保同步
+                await loadData();
+                
+                // 更新用户进度
+                updateUserProgress();
+            } catch (error) {
+                console.error('提交打卡错误:', error);
+                showError('提交打卡失败，请重试: ' + error.message);
             }
-            
-            closeUnbindModal();
         }
         
-        // 植物照片上传
-        document.getElementById('plantPhotoInput').addEventListener('change', function(e) {
-            const file = e.target.files[0];
-            if (file) {
-                if (file.size > 5 * 1024 * 1024) {
-                    alert('图片大小不能超过5MB');
-                    return;
+        // 审核通过打卡
+        async function approveCheckin(checkinId) {
+            const { error } = await supabase
+                .from('checkins')
+                .update({ status: 'approved' })
+                .eq('id', checkinId);
+            
+            if (error) {
+                console.error('审核通过错误:', error);
+                showError('审核操作失败');
+                return;
+            }
+            
+            // 更新本地数组
+            const checkinIndex = checkins.findIndex(c => c.id === checkinId);
+            if (checkinIndex !== -1) {
+                checkins[checkinIndex].status = 'approved';
+            }
+            
+            // 重新渲染表格
+            renderCheckinTable();
+            alert('打卡记录已通过审核');
+        }
+        
+        // 审核拒绝打卡
+        async function rejectCheckin(checkinId) {
+            const { error } = await supabase
+                .from('checkins')
+                .update({ status: 'rejected' })
+                .eq('id', checkinId);
+            
+            if (error) {
+                console.error('审核拒绝错误:', error);
+                showError('审核操作失败');
+                return;
+            }
+            
+            // 更新本地数组
+            const checkinIndex = checkins.findIndex(c => c.id === checkinId);
+            if (checkinIndex !== -1) {
+                checkins[checkinIndex].status = 'rejected';
+            }
+            
+            // 重新渲染表格
+            renderCheckinTable();
+            alert('打卡记录已拒绝');
+        }
+        
+        // 用户类型切换
+        function handleUserTypeChange() {
+            const userType = document.querySelector('.user-type.active').dataset.type;
+            const plantSelectContainer = document.getElementById('plantSelectContainer');
+            const loginUserBoundInfo = document.getElementById('loginUserBoundInfo');
+            const adminPasswordContainer = document.getElementById('adminPasswordContainer');
+            
+            // 重置显示状态
+            plantSelectContainer.style.display = 'none';
+            loginUserBoundInfo.style.display = 'none';
+            adminPasswordContainer.style.display = 'none';
+            
+            // 清空用户名和密码
+            document.getElementById('username').value = '';
+            document.getElementById('password').value = '';
+            
+            if (userType === 'admin') {
+                // 管理员需要密码
+                adminPasswordContainer.style.display = 'block';
+            } else {
+                // 参与者不需要密码
+                adminPasswordContainer.style.display = 'none';
+            }
+        }
+        
+        // 用户名输入事件 - 检查用户是否已绑定植物
+        function handleUsernameInput() {
+            const userType = document.querySelector('.user-type.active').dataset.type;
+            const username = document.getElementById('username').value.trim();
+            const plantSelectContainer = document.getElementById('plantSelectContainer');
+            const loginUserBoundInfo = document.getElementById('loginUserBoundInfo');
+            const boundPlantName = document.getElementById('boundPlantName');
+            
+            // 如果是管理员，直接返回，不显示植物相关选项
+            if (userType === 'admin') {
+                plantSelectContainer.style.display = 'none';
+                loginUserBoundInfo.style.display = 'none';
+                return;
+            }
+            
+            // 重置显示状态
+            plantSelectContainer.style.display = 'none';
+            loginUserBoundInfo.style.display = 'none';
+            
+            if (username) {
+                // 检查用户是否已存在
+                const adopter = adopters.find(a => a.name === username);
+                
+                if (adopter) {
+                    // 老用户 - 显示已绑定植物信息
+                    if (adopter.plant_id) {
+                        const plant = plants.find(p => p.id === adopter.plant_id);
+                        if (plant) {
+                            boundPlantName.textContent = `${plant.name} #${plant.id}`;
+                            loginUserBoundInfo.style.display = 'block';
+                        }
+                    } else {
+                        // 老用户但未绑定植物 - 显示植物选择
+                        plantSelectContainer.style.display = 'block';
+                    }
+                } else {
+                    // 新用户 - 显示植物选择
+                    plantSelectContainer.style.display = 'block';
+                }
+            }
+        }
+        
+        // 初始化事件监听器
+        function initializeEventListeners() {
+            console.log('初始化事件监听器...');
+            
+            // 用户类型选择
+            document.querySelectorAll('.user-type').forEach(item => {
+                item.addEventListener('click', function() {
+                    document.querySelectorAll('.user-type').forEach(i => i.classList.remove('active'));
+                    this.classList.add('active');
+                    handleUserTypeChange();
+                });
+            });
+            
+            // 用户名输入事件
+            document.getElementById('username').addEventListener('input', handleUsernameInput);
+            
+            // 登录按钮
+            document.getElementById('loginButton').addEventListener('click', login);
+            
+            // 退出登录按钮
+            document.getElementById('logoutButton').addEventListener('click', logout);
+            
+            // 后台菜单
+            document.querySelectorAll('.menu-item').forEach(item => {
+                item.addEventListener('click', function() {
+                    const sectionId = this.getAttribute('data-section');
+                    showSection(sectionId);
+                });
+            });
+            
+            // 添加植物按钮
+            document.getElementById('addPlantButton').addEventListener('click', openAddPlantModal);
+            
+            // 关闭添加植物模态框
+            document.getElementById('closeAddPlantModal').addEventListener('click', closeAddPlantModal);
+            document.getElementById('cancelAddPlant').addEventListener('click', closeAddPlantModal);
+            
+            // 保存植物按钮
+            document.getElementById('savePlantButton').addEventListener('click', addPlant);
+            
+            // 管理员绑定植物按钮
+            document.getElementById('bindAdopterButton').addEventListener('click', openBindPlantModal);
+            
+            // 关闭绑定植物模态框
+            document.getElementById('closeBindPlantModal').addEventListener('click', closeBindPlantModal);
+            document.getElementById('cancelBindPlant').addEventListener('click', closeBindPlantModal);
+            
+            // 保存绑定植物按钮
+            document.getElementById('saveBindPlantButton').addEventListener('click', bindPlantAdmin);
+            
+            // 打卡按钮 - 改为打开照片上传模态框
+            document.getElementById('checkinButton').addEventListener('click', openPhotoUploadModal);
+            
+            // 照片上传模态框事件
+            document.getElementById('closePhotoUploadModal').addEventListener('click', closePhotoUploadModal);
+            document.getElementById('cancelPhotoButton').addEventListener('click', closePhotoUploadModal);
+            document.getElementById('submitPhotoButton').addEventListener('click', submitCheckinWithPhoto);
+            document.getElementById('photoUpload').addEventListener('change', handlePhotoUpload);
+            
+            // 照片上传区域点击事件
+            document.getElementById('photoUploadArea').addEventListener('click', function() {
+                document.getElementById('photoUpload').click();
+            });
+            
+            // 拖放功能
+            const photoUploadArea = document.getElementById('photoUploadArea');
+            photoUploadArea.addEventListener('dragover', function(e) {
+                e.preventDefault();
+                this.style.borderColor = 'var(--primary-green)';
+                this.style.backgroundColor = 'var(--light-green)';
+            });
+            
+            photoUploadArea.addEventListener('dragleave', function(e) {
+                e.preventDefault();
+                this.style.borderColor = 'var(--border-gray)';
+                this.style.backgroundColor = 'transparent';
+            });
+            
+            photoUploadArea.addEventListener('drop', function(e) {
+                e.preventDefault();
+                this.style.borderColor = 'var(--border-gray)';
+                this.style.backgroundColor = 'transparent';
+                
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    document.getElementById('photoUpload').files = files;
+                    handlePhotoUpload({ target: { files: files } });
+                }
+            });
+            
+            // 动态生成的按钮事件委托
+            document.addEventListener('click', function(e) {
+                // 删除植物按钮
+                if (e.target.classList.contains('delete-plant')) {
+                    const plantId = e.target.getAttribute('data-plant-id');
+                    deletePlant(plantId);
                 }
                 
-                if (file.type !== 'image/jpeg' && file.type !== 'image/png') {
-                    alert('只支持JPG/PNG格式');
-                    return;
+                // 删除参与者按钮
+                if (e.target.classList.contains('delete-adopter')) {
+                    const adopterName = e.target.getAttribute('data-adopter-name');
+                    deleteAdopter(adopterName);
                 }
                 
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    const preview = document.getElementById('plantPhotoPreview');
-                    preview.innerHTML = `<img src="${e.target.result}" alt="植物照片">`;
-                };
-                reader.readAsDataURL(file);
+                // 审核通过打卡
+                if (e.target.classList.contains('approve-checkin')) {
+                    const checkinId = e.target.getAttribute('data-checkin-id');
+                    approveCheckin(checkinId);
+                }
+                
+                // 审核拒绝打卡
+                if (e.target.classList.contains('reject-checkin')) {
+                    const checkinId = e.target.getAttribute('data-checkin-id');
+                    rejectCheckin(checkinId);
+                }
+                
+                // 查看照片
+                if (e.target.classList.contains('view-photo')) {
+                    const photoData = e.target.getAttribute('data-photo');
+                    if (photoData) {
+                        // 在新窗口打开照片
+                        const newWindow = window.open();
+                        newWindow.document.write(`<img src="${photoData}" style="max-width: 100%;">`);
+                    }
+                }
+            });
+            
+            console.log('事件监听器初始化完成');
+        }
+        
+        // 初始化Supabase
+        function initializeSupabase() {
+            console.log('初始化Supabase...');
+            
+            try {
+                supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                console.log('Supabase初始化成功');
+                return true;
+            } catch (error) {
+                console.error('Supabase初始化失败:', error);
+                showError('Supabase初始化失败: ' + error.message);
+                return false;
+            }
+        }
+        
+        // 页面加载时初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('页面加载完成，开始初始化...');
+            
+            // 初始化Supabase
+            if (initializeSupabase()) {
+                // 初始化事件监听器
+                initializeEventListeners();
+                
+                // 初始化用户类型选择
+                handleUserTypeChange();
+                
+                // 初始化数据
+                initializeData();
+                
+                console.log('初始化完成');
             }
         });
-        
-        // 页面加载时初始化数据
-        window.onload = function() {
-            initializeData();
-        };
     </script>
 </body>
 </html>
